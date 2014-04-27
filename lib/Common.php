@@ -163,11 +163,11 @@ function get_divided_range($forks, $range_id, $start, $end) {
     $data['total_keys'] = ($end - ($start - 1));
 
     /* Get the total number of keys per fork */
-    $data['keys_per_range'] = (int) ($data['total_keys'] / $forks); 
+    $data['keys_per_range'] = (int) ($data['total_keys'] / $forks);
 
     /* Figure out if there are any remaining keys after dividing up the range */
-    $data['remainder'] = 
-        $data['total_keys'] - ($forks * $data['keys_per_range']); 
+    $data['remainder'] =
+        $data['total_keys'] - ($forks * $data['keys_per_range']);
 
     if ($range_id == 1) {
         $data['start'] = $start;
@@ -175,8 +175,8 @@ function get_divided_range($forks, $range_id, $start, $end) {
     } else {
         $data['start'] = $start + (($range_id - 1) * $data['keys_per_range']) ;
         if ($range_id == $forks) {
-            $data['end'] = $data['start'] 
-                + ($data['keys_per_range'] - 1) 
+            $data['end'] = $data['start']
+                + ($data['keys_per_range'] - 1)
                 + $data['remainder'];
         } else {
             $data['end'] =  $data['start'] + ($data['keys_per_range'] - 1);
@@ -188,7 +188,7 @@ function get_divided_range($forks, $range_id, $start, $end) {
 function host_to_addr($host) {
 /*      host_to_addr()
         Convert host to IP Address
-        @params string $host hostname/ip to validate        
+        @params string $host hostname/ip to validate
         @return bool
 */
     if (validate_ip($host)) {
@@ -218,8 +218,8 @@ function parse_server_list($servers) {
         $settings['serverlist'] = $servers;
     }
 
-    if (ereg(",", $servers)) {
-        $split_options = split(',', $servers);
+    if (preg_match('/,/', $servers)) {
+        $split_options = explode(',', $servers);
         foreach ($split_options as $current) {
             parse_server_list($current);
         }
@@ -227,8 +227,8 @@ function parse_server_list($servers) {
         $server = array();
         $server['server'] = host_to_addr('localhost');
         $server['tcp_port'] = '11211';
-        $server['udp_port'] = '11211'; 
-        if (ereg(":", $servers)) {
+        $server['udp_port'] = '11211';
+        if (preg_match('/:/', $servers)) {
             $curr_explode = explode(':', $servers);
             $host = trim($curr_explode[0]);
             $host = strtolower($host);
@@ -254,15 +254,15 @@ function parse_server_list($servers) {
 function parse_collector($collector) {
     global $settings;
 
-    if (ereg(':', $collector)) {
-        $split_collector = split(':', $collector);
+    if (preg_match('/:/', $collector)) {
+        $split_collector = explode(':', $collector);
         $host = trim($split_collector[0]);
         $port = (int) $split_collector[1];
         $settings['collector']['host'] = host_to_addr($host);
-        $settings['collector']['port'] = $port; 
+        $settings['collector']['port'] = $port;
     } else {
         $settings['collector']['host'] = host_to_addr($collector);
-        $settings['collector']['port'] = '9091'; 
+        $settings['collector']['port'] = '9091';
     }
 }
 
@@ -280,7 +280,6 @@ function setup_library($library) {
         default:
             echo("Error Unknown Library\n");
             exit(1);
-        break;
     }
     $memcache->connect();
 }
@@ -300,17 +299,15 @@ function parse_library($library) {
         default:
             echo("Error Unknown Library\n");
             exit(1);
-        break;
     }
     return $settings['library'];
 }
 
 function parse_test($test) {
-    global $settings; 
+    global $settings;
 
     $settings['test'] = trim($test);
     $filename = $settings['test'];
-
 
     if (class_exists('DOMDocument', FALSE)) {
         $dom = new DOMDocument;
@@ -337,5 +334,3 @@ function parse_test($test) {
     $object->loadTest($xml->test);
     $settings['config'] = $object;
 }
-
-?>

@@ -135,7 +135,7 @@ foreach ($test->getJobs() as $job) {
     $settings['library'] = $job->getLibrary();
     setup_library($job->getLibrary());
 
-    StatService::newEvent("Job '" . $job->getName() 
+    StatService::newEvent("Job '" . $job->getName()
         . "' started on " . php_uname('n') . " using ". $job->getLibrary());
 
     foreach ($job->getValuesets() as $valueset) {
@@ -167,7 +167,7 @@ foreach ($test->getJobs() as $job) {
             if (isset($settings['collector'])) {
                 $latency = $end_latency - $start_latency;
                 StatService::increment(STAT_LATENCY, $latency);
-                $current = $end_latency; 
+                $current = $end_latency;
                 $time = $current - $last;
                 if ($time >= CLIENT_REPORT_TIME) {
                     StatService::report();
@@ -190,7 +190,7 @@ foreach ($test->getJobs() as $job) {
             }
         }
     }
-    StatService::newEvent("Job '" . $job->getName() 
+    StatService::newEvent("Job '" . $job->getName()
         . "' ended on " . php_uname('n'));
     if (isset($settings['collector'])) {
         StatService::report();
@@ -205,5 +205,3 @@ StatService::newEvent("Test '" . $test->getName()
 if (isset($settings['collector'])) {
     StatService::report();
 }
-
-?>

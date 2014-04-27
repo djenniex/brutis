@@ -107,7 +107,7 @@ function start_server($address, $port) {
 
     $sock = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
     socket_set_option($sock, SOL_SOCKET, SO_REUSEADDR, 1);
-    socket_bind($sock, $address, $port); 
+    socket_bind($sock, $address, $port);
     socket_listen($sock);
 
     $clients = array($sock);
@@ -127,14 +127,14 @@ function start_server($address, $port) {
             $key = array_search($sock, $read);
             onConnect($newsock);
             unset($read[$key]);
-        } 
+        }
 
         foreach ($read as $read_sock) {
             $buf_size = 0;
             $buf = '';
             $data = '';
             while ($buf != "\n") {
-                $buf = socket_read($read_sock, 1); 
+                $buf = socket_read($read_sock, 1);
                 $data .= $buf;
                 if ($buf === '') {
                     $key = array_search($read_sock, $clients);
@@ -145,7 +145,7 @@ function start_server($address, $port) {
             }
             /* get object size and read object into buffer */
             $buf_size = (int) $data;
-            $data = @socket_read($read_sock, $buf_size); 
+            $data = @socket_read($read_sock, $buf_size);
             if ($data != "") {
                 if (!$data = unserialize($data)) {
                     print ("Error in collector data\n");
@@ -156,12 +156,12 @@ function start_server($address, $port) {
                     socket_write($read_sock, $buf, strlen($buf));
                     onReceiveData($read_sock, $data);
                 }
-            } 
+            }
         }
-    }       
+    }
     onShutdown();
     socket_close($sock);
-}    
+}
 
 function clear_screen() {
     $codes =  array(27, 91, 72, 27, 91, 50, 74);
@@ -208,8 +208,8 @@ function OnConnect ($client_id = 0) {
 
     $clients++;
 
-    socket_getpeername($client_id, $address, $port); 
-    $event = "$client_id ($address:$port) connected"; 
+    socket_getpeername($client_id, $address, $port);
+    $event = "$client_id ($address:$port) connected";
     $events['last_event'] = $event;
     $events['events'][] = $event;
 
@@ -227,11 +227,11 @@ function OnClose($client_id = 0) {
     $clients--;
 
     if (@socket_getpeername($client_id, $address, $port)) {
-        $event = "$client_id ($address:$port) disconnected"; 
+        $event = "$client_id ($address:$port) disconnected";
         $events['last_event'] = $event;
         $events['events'][] = $event;
     } else {
-        $event = "$client_id terminated connection"; 
+        $event = "$client_id terminated connection";
         $events['last_event'] = $event;
         $events['events'][] = $event;
     }
@@ -255,7 +255,7 @@ function output_stats() {
             $samples = array();
             $cur_events = array();
             foreach ($stats as $stat) {
-                $samples[$times['current']][$stat->getName()] = 
+                $samples[$times['current']][$stat->getName()] =
                     $stat->asRTotal();
             }
             if (isset($events['events'])) {
@@ -402,7 +402,7 @@ function print_sample() {
     $address = $settings['collector']['host'] . ':'
         . $settings['collector']['port'];
 
-    pad("Brutis Collector on " . $address . ', ' 
+    pad("Brutis Collector on " . $address . ', '
         . $clients . " connections", 6, COLLECTOR_LEFT);
     echo("\n");
     pad("Refresh: " . COLLECTOR_SAMPLE_TIME . " Seconds", 8, COLLECTOR_RIGHT);
@@ -464,7 +464,7 @@ function print_sample() {
     pad($stats[STAT_TOTAL_OPS]->asFSample($times['since_last']) . "/sec", 2);
     pad($stats[STAT_TOTAL_OPS]->asFTotal(), 2);
     $total = $stats[STAT_TOTAL_OPS]->asRTotal();
-    $latency = $stats[STAT_LATENCY]->asFSampleTotal($total); 
+    $latency = $stats[STAT_LATENCY]->asFSampleTotal($total);
     pad($latency . ' sec', 2);
     echo("\n\n");
 
@@ -535,9 +535,9 @@ function report_to_brutisweb() {
 echo("NEEDS UPDATE\n");
 exit();
 
-    $data[STAT_TOTAL_OPS] = 
+    $data[STAT_TOTAL_OPS] =
         $stats[STAT_TOTAL_OPS]->asRSample($times['since_start']);
-    $data[STAT_LATENCY] = 
+    $data[STAT_LATENCY] =
         $stats[STAT_LATENCY]->asRSample($data[STAT_TOTAL_OPS]);
     $data[STAT_SET] = $stats[STAT_SET]->asRSample($time);
     $data[STAT_SET_FAIL] = $stats[STAT_SET_FAIL]->asRSample($time);
@@ -582,7 +582,7 @@ exit();
 }
 
 
-/* MAIN */ 
+/* MAIN */
 
 $clients = 0;
 $times = array();
@@ -627,4 +627,3 @@ $stats[STAT_LATENCY]->setDecimals(6);
 /* Start collector on requested ip port */
 pcntl_signal(SIGINT, "onShutdown", FALSE);
 start_server($settings['collector']['host'], $settings['collector']['port']);
-?>
