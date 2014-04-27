@@ -1,233 +1,258 @@
 #!/usr/bin/php
 <?php
-/*
-	Project:	Brutis
-	Version:	0.93
-	Author:		Zach Younker
-	Copyright:
+/*  Author:    $Author: zyounker $
+    Revision:  $Revision: 1.18 $
+    Filename:  $Source: /cvshome/brutis/brutis,v $
+    Date:      $Date: 2010-03-26 21:33:17 $
+    Copyright:
 
-		Software License Agreement (BSD License)
+    Software License Agreement (BSD License)
 
-		Copyright (c) 2009, Gear Six, Inc.
-		All rights reserved.
+    Copyright (c) 2010, Violin Memory, Inc.
+    All rights reserved.
 
-		Redistribution and use in source and binary forms, with or without
-		modification, are permitted provided that the following conditions are
-		met:
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
 
-		* Redistributions of source code must retain the above copyright
-		  notice, this list of conditions and the following disclaimer.
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
 
-		* Redistributions in binary form must reproduce the above
-		  copyright notice, this list of conditions and the following disclaimer
-		  in the documentation and/or other materials provided with the
-		  distribution.
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following disclaimer
+      in the documentation and/or other materials provided with the
+      distribution.
 
-		* Neither the name of Gear Six, Inc. nor the names of its
-		  contributors may be used to endorse or promote products derived from
-		  this software without specific prior written permission.
+    * Neither the name of Violin Memory, Inc. nor the names of its
+      contributors may be used to endorse or promote products derived from
+      this software without specific prior written permission.
 
-		THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-		"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-		LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-		A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-		OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-		SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-		LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-		DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-		THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-		(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-		OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-/* Set error reporting to ALL */
+
 error_reporting(E_ALL);
 
-require_once('lib/task_manager.php');
-require_once('lib/functions.php');
-
-/* Define how to run collector by extending Task class */
-class collector extends Task{
-	function exec() {
-		/* Execute collector */
-		parent::exec();
-		global $port;
-
-		if ($this->args['verbose']) {
-			print("Starting collector\n");
-			$options[] = '-v';
-		}
-		$options[] = '-F' . $this->args['output_format'];
-
-		$options[] = '-i' . $this->args['poll'];
-
-		if ($this->args['filename'] != NULL) {
-			$options[] = '-o' . $this->args['filename'];
-		}
-		$options[] = '-c' . $this->args['collector']['server'] . ":". $this->args['collector']['port'];
-		if (isset($options)) {
-			/*pcntl_exec('lib/collector', $options);*/
-			pcntl_exec('lib/collector', $options);
-		} else {
-			pcntl_exec('lib/collector', array());
-			/*pcntl_exec('lib/collector', array());*/
-		}
-	}
-	function finish() {
-		/* Code to run when collector finishes */
-		parent::finish();
-		if ($this->exit_code > 0) {
-			print ("collector exit code " . $this->exit_code . "!\n");
-		}
-	}
+function __autoload($class) {
+    load_class($class);
 }
 
-/* Define how to run client by extending Task class */
-class client extends Task{
-	function exec() {
-		/* Execute client */
-		parent::exec();
-		$options[] = '-k' . $this->args['max_keys'];
-		if($this->args['prefix']) {
-			$options[] = '-p' . $this->args['prefix'];
-		}
-		if($this->args['persistent']) {
-			$options[] = '-P';
-		}
-		$options[] = '-R' . $this->args['reconnect'];
-		$options[] = '-m' . $this->args['multiplier'];
-		$options[] = '-r' . $this->args['set_ratio'] . ':' . $this->args['get_ratio'];
-		$options[] = '-a' . $this->args['set_pattern'] . ':' . $this->args['get_pattern'];
-		$options[] = '-z' . $this->args['offset'];
-		if ($this->args['batch'] > 0) {
-			$options[] = '-b' . $this->args['batch'];
-		}
-		if ($this->args['operations'] != NULL) {
-			$options[] = '-n' . $this->args['operations'];
-		}
-		if ($this->args['runtime'] != NULL) {
-			$options[] = '-t' . $this->args['runtime'];
-		}
-		if ($this->args['checksum'] == TRUE) {
-			$options[] = '-d';
-		}
-		$options[] = '-s' . $this->args['object_size'];
-		$options[] = '-i' . $this->args['poll'];
-		$server_list = NULL;
-		for ($i = 0; $i < count($this->args['memcache']); $i++) {
-			if ($i != (count($this->args['memcache']) - 1)) {
-				$server_list .= $this->args['memcache'][$i]['server'] . ":" .
-					$this->args['memcache'][$i]['tcp_port'] . ':' .
-					$this->args['memcache'][$i]['udp_port'] . ',';
-			} else {
-				$server_list .= $this->args['memcache'][$i]['server'] . ":" .
-					$this->args['memcache'][$i]['tcp_port'] . ":".
-					$this->args['memcache'][$i]['udp_port'];
-			}
-		}
-		$options[] = "-x" . trim($server_list);
-                if ($this->args['filename'] != NULL 
-                    || $this->args['verbose'] == TRUE
-                    || $this->args['use_collector'] == true) {
-			$options[]='-c' . $this->args['collector']['server'] . ":" . $this->args['collector']['port'];
-                }
-
-		pcntl_exec('lib/client', $options);
-	}
-	function finish() {
-		/* Code to run when collector finishes */
-		parent::finish();
-
-		if ($this->exit_code > 0) {
-			print ("client pid " . $this->pid . " exit code " . $this->exit_code . "!\n");
-		}
-	}
+function load_class($class) {
+    include_once(dirname(__FILE__) . '/lib/' . $class . '.php');
 }
 
-function init_settings($argc, $argv) {
-/*	init_settings()
-	Get runtime arguments and convert them to settings.
-	@param int $argc number of arguments
-	@param mixed $argv,... runtime arguments
-*/
-	$options = getopt("Pc:Da:z:dk:p:r:n:t:f:s:o:F:x:vhb:i:m:R:");
+load_class('Common');
+load_class('TaskManager');
+load_class('BrutisError');
 
-	if (isset($options['h']) || !isset($options['x'])) {
-		print (
-			"\nUsage: Brutis -x <server_list> [OPTIONS]\n"
-			. "	-c <collector>			Specifiy collector host\n"
-			. "	-D       			Disable staring of local collector\n"
-			. "	-a <#:#>			Access Pattern (r=random, s=sequential)\n"
-			. "	-z <#>				Key id Offset\n"
-			. "	-b <#>				Number of gets to batch together\n"
-			. "	-i <#>				Collector Poll time in seconds\n"
-			. "	-d 				Enable data checksum\n"
-			. "	-k <#>	 			Max keys\n"
-			. "	-p <prefix> 			key prefix\n"
-			. "	-P  				Enable persistent connections\n"
-			. "	-m <#>  			ConnectionPool multiplier\n"
-			. "	-r <#:#>			Ratio Sets:Gets\n"
-			. "	-R <#>				Non-persistent disconnect/reconnect timer\n"
-			. "	-n <#>				Total number of operations\n"
-			. "	-t <#>				Time in seconds to run tests default(48hours)\n"
-			. "	-f <#>				Processes to fork\n"
-			. "	-s <#>				Object size in bytes\n"
-			. "	-o <filename>			Write results output\n"
-			. "	-F <format>			Results output format\n"
-			. "	-x <serverlist,>		list of servers (la-vip-1:11211:11211,la-vip-2:11211:11211,..)\n"
-			. "	-v 				Verbose\n"
-			. "	-h				Help\n"
-			. "\n\n");
-		exit(1);
-	}
+set_error_handler(array('BrutisError','BrutisErrorHandler'));
 
-	parse_collector($options, 'c');
-	parse_disable_collector($options, 'D');
-	parse_offset($options, 'z');
-	parse_access_pattern($options, 'a');
-	parse_keys($options, 'k');
-	parse_checksum($options, 'd');
-	parse_prefix($options, 'p');
-	parse_persistent($options, 'P');
-	parse_reconnect($options, 'R');
-	parse_multiplier($options, 'm');
-	parse_ratio($options, 'r');
-	parse_operations($options, 'n');
-	parse_runtime($options, 't');
-	parse_forks($options, 'f');
-	parse_object_size($options, 's');
-	parse_output($options, 'o');
-	parse_output_format($options, 'F');
-	parse_mc_servers($options, 'x');
-	parse_verbose($options, 'v');
-	parse_batch($options, 'b');
-	parse_poll($options, 'i');
+set_default_library();
+
+
+class client extends Task {
+    function exec() {
+        parent::exec();
+
+        $options = array();
+
+        if ($this->args['verbose']) {
+            $options[] = '-v';
+        }
+
+        if ($this->args['range_id'] !== NULL) {
+            $options[] = '-r ' . $this->args['range_id'];
+        }
+
+        if ($this->args['job_id'] !== NULL) {
+            $options[] = '-j ' . $this->args['job_id'];
+        }
+
+        if (isset($this->args['collector']['host'])) {
+            $options[] = '-C ' . $this->args['collector']['host'] 
+                . ':' . $this->args['collector']['port'];
+        }
+        $options[] = '-t ' . $this->args['test'];
+        $options[] = '-x ' . $this->args['serverlist'];
+
+        pcntl_exec(dirname(__FILE__) . '/client', $options);
+    }
+
+    function finish() {
+        parent::finish();
+        if ($this->exit_code > 0) {
+            echo("Client exit code: " . $this->exit_code . "\n");
+        }
+    }
+}
+
+class collector extends Task {
+    function exec() {
+        parent::exec();
+
+        $options = array();
+
+        if ($this->args['verbose']) {
+            $options[] = '-v';
+        }
+
+        if ($this->args['filename'] != NULL) {
+            $options[] = '-o ' . $this->args['filename'];
+        }
+
+        if ($this->args['format'] != NULL) {
+            $options[] = '-F ' . $this->args['format'];
+        }
+
+        if ($this->args['brutisweb'] != NULL) {
+            $options[] = '-w ' . $this->args['brutisweb'];
+        }
+
+        $options[] = '-C ' . $this->args['collector']['host'] 
+            . ':' . $this->args['collector']['port'];
+
+
+        pcntl_exec(dirname(__FILE__) . '/collector', $options);
+    }
+
+    function funish() {
+        parent::finish();
+        if ($this->exit_code > 0) {
+            echo("Collector exit code: " . $this->exit_code . "\n");
+        }
+    }
+}
+
+function init_brutis_settings($argc, $argv) {
+    global $settings;
+    global $path;
+
+    $options = getopt('c:x:vho:F:w:Xt:');
+    if (isset($options['h'])
+        || !isset($options['t'])
+        || !isset($options['x'])) {
+        echo("\nUsage: brutis -t <test_name> -x <serverlist,> [OPTIONS]\n"
+            . "    -h                        Help\n"
+            . "    -v                        Verbose\n"
+            . "    -t <test_config>          Test to run\n"
+            . "    -X                        Don't start collector\n"
+            . "    -c <collector>            Collector host:port\n"
+            . "    -x <serverlist,>          List of Memcache Servers\n"
+            . "    -o <output_filename>      Output file\n"
+            . "    -F <format>               Output format (csv, json)\n"
+            . "    -w <url>                  BrutisWeb\n"
+            . "\n\n");
+        exit(1);
+    }
+
+    $settings['verbose'] = FALSE;
+    if (isset($options['v'])) {
+        $settings['verbose'] = TRUE;
+    }
+
+    $settings['filename'] = NULL;
+    if (isset($options['o'])) {
+        $settings['filename'] = $options['o'];
+    }
+
+    $settings['format'] = NULL;
+    if (isset($options['F'])) {
+        $settings['format'] = $options['F'];
+    }
+
+    $settings['brutisweb'] = NULL;
+    if (isset($options['w'])) {
+        $settings['brutisweb'] = (string) trim($options['w']);
+    }
+
+    $settings['disable_collector'] = FALSE;
+    if (isset($options['X'])) {
+        $settings['disable_collector'] = TRUE;
+    }
+
+    if (isset($options['c'])) {
+        parse_collector($options['c']);
+    }
+
+    parse_server_list($options['x']);
+    parse_test($options['t']);
 
 }
 
-/* MAIN */
-$settings = array();
-init_settings($argc, $argv);
-check_libs();
+function get_port($host, $port, $limit) {
+    $done = FALSE;
+    $i = 0;
+    while ($done == FALSE && $i <= $limit) {
+        $sock = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+        socket_set_option($sock, SOL_SOCKET, SO_REUSEADDR, 1);
+        if (@socket_bind($sock, $host, $port)) {
+            $done = TRUE;
+            break;
+        }
+        socket_close($sock);
+        $port++;
+        $i++;
+    }
+
+    if ($done == FALSE) {
+        return NULL;
+    } else {
+        return $port;
+    }
+}
+
+
+
+# MAIN
+
 $tm = new TaskManager();
+$settings = array();
+init_brutis_settings($argc, $argv);
 
-/* set maxruntime */
-if ($settings['runtime'] !== NULL) {
-    $settings['maxruntime'] = $settings['runtime'] + 10;
+if (!isset($settings['collector'])) { 
+    $settings['collector']['host'] = host_to_addr('localhost');
+    $settings['collector']['port'] = get_port(
+        $settings['collector']['host'], 9091, 128);
 }
 
-/* If collector specified is this host, add collector to taskmanager to be executed */
-if ($settings['disable_collector'] == FALSE) {
-	$tm->add_task(new collector(), $settings);
-}
+$job_id = 1;
+foreach ($settings['config']->getJobs() as $job) {
+    if ($settings['filename'] !== NULL 
+        || $settings['verbose'] == TRUE 
+        || $settings['brutisweb'] !== NULL) {
 
-/* Add clients to task manager to be executed. */
-for ($i = 1; $i <= $settings['forks']; $i++) {
-	$tm->add_task(new client(), $settings);
-}
+        if ($settings['collector']['port'] === NULL) {
+            echo("Unable to start collector, no ports available.\n");
+            echo("Exiting...\n");
+            exit(1);
+        } 
+    }
 
-/* Execute Tasks */
-$tm->run();
+    if (!$settings['disable_collector']) {
+        $tm->add_task(new collector(), $settings);
+    }
+
+    $settings['forks'] = $job->getForks();
+    $settings['range_id'] = NULL;
+    $settings['job_id'] = $job_id;
+    for ($i = 1; $i <= $settings['forks']; $i++) {
+        $settings['range_id'] = $i;
+        $tm->add_task(new client(), $settings);
+    }
+    $tm->run();
+    $tm->reset();
+    $job_id++;
+}
 
 ?>

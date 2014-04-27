@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!DOCTYPE brutis SYSTEM "brutis.dtd">
+<brutis>
+    <test name='Mixed set size' desc='Divided mixed size set test' version='1.0'>
+        <jobset name='set_512' forks='2' time='60' library='danga'>
+            <dataset>
+                <key name='set' start='1' end='10000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <value name='d_512' mode='generated' size='512'/>
+            </dataset>
+            <operations>
+                <operation type='set' keyset='set' valueset='d_512'/>
+            </operations>
+        </jobset>
+        <jobset name='set_4096' forks='2' time='60'>
+            <dataset>
+                <key name='set' start='1' end='10000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <value name='d_4096' mode='generated' size='4096'/>
+            </dataset>
+            <operations>
+                <operation type='set' keyset='set' valueset='d_4096'/>
+            </operations>
+        </jobset>
+        <jobset name='set_16384' forks='2' time='60'>
+            <dataset>
+                <key name='set' start='1' end='10000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <value name='d_16384' mode='generated' size='16384'/>
+            </dataset>
+            <operations>
+                <operation type='set' keyset='set' valueset='d_16384'/>
+            </operations>
+        </jobset>
+        <jobset name='set_65536' forks='2' time='60'>
+            <dataset>
+                <key name='set' start='1' end='10000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <value name='d_65536' mode='generated' size='65536'/>
+            </dataset>
+            <operations>
+                <operation type='set' keyset='set' valueset='d_65536'/>
+            </operations>
+        </jobset>
+    </test>
+</brutis>

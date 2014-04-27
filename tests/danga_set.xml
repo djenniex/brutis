@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!DOCTYPE brutis SYSTEM "brutis.dtd">
+<brutis>
+    <test name='Set' desc='Divided set test' version='1.0'>
+        <jobset name='set' forks='2' time='300' library='danga'>
+            <dataset>
+                <key name='set' start='1' end='100000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <value name='generated' mode='generated' size='32'/>
+            </dataset>
+            <operations>
+                <operation type='set' keyset='set' valueset='generated'/>
+            </operations>
+        </jobset>
+    </test>
+</brutis>

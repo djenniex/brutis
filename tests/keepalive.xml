@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!DOCTYPE brutis SYSTEM "brutis.dtd">
+<brutis>
+    <test name='Keepalive Test' desc='Do set every 5 minutes' version='1.0'>
+        <jobset name='keepalive'>
+            <dataset>
+                <key name='set' start='1' end='1' prefix='brutiskeepalive-'/>
+                <value name='generated' mode='generated' size='1'/>
+            </dataset>
+            <operations>
+                <operation type='set' keyset='set' valueset='generated'/>
+                <operation type='sleep' count='300'/>
+            </operations>
+        </jobset>
+    </test>
+</brutis>

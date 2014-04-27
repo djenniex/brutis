@@ -1,0 +1,209 @@
+#!/usr/bin/php
+<?php
+/*  Author:    $Author: zyounker $
+    Revision:  $Revision: 1.16 $
+    Filename:  $Source: /cvshome/brutis/client,v $
+    Date:      $Date: 2010-03-26 21:33:17 $
+    Copyright:
+
+    Software License Agreement (BSD License)
+
+    Copyright (c) 2010, Violin Memory, Inc.
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following disclaimer
+      in the documentation and/or other materials provided with the
+      distribution.
+
+    * Neither the name of Violin Memory, Inc. nor the names of its
+      contributors may be used to endorse or promote products derived from
+      this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+*/
+
+
+error_reporting(E_ALL);
+ini_set('memory_limit', '32M');
+#ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ini_set("error_log", "client-" . php_uname('n') . ".log");
+
+
+function __autoload($class) {
+    load_class($class);
+}
+
+function load_class($class) {
+    include_once(dirname(__FILE__) . '/lib/' . $class . '.php');
+}
+
+load_class('Common');
+load_class('StatService');
+load_class('DataService');
+load_class('BrutisError');
+
+set_error_handler(array('BrutisError','BrutisErrorHandler'));
+
+set_default_library();
+
+function init_client_settings($argc, $argv) {
+    global $settings;
+
+    $options = getopt('t:x:r:j:C:h');
+    if (isset($options['h'])
+        || !isset($options['t'])
+        || !isset($options['x'])) {
+        echo("\nUsage: client -t <test_name> -x <serverlist,> [OPTIONS]\n"
+            . "    -h                        Help\n"
+            . "    -t <test_config>          Test to run\n"
+            . "    -C <collector:port,>      collector to report to\n"
+            . "    -x <serverlist,>          List of Memcache Servers\n"
+            . "    -r <rangeid>              Range ID (internal usage)\n"
+            . "    -j <jobid>                Job ID (internal usage)\n"
+            . "\n\n");
+        exit(1);
+    }
+
+    $settings['range_id'] = NULL;
+    if (isset($options['r'])) {
+        $settings['range_id'] = (int) $options['r'];
+    }
+
+    $settings['job_id'] = NULL;
+    if (isset($options['j'])) {
+        $settings['job_id'] = (int) $options['j'];
+    }
+
+    if (isset($options['C'])) {
+        $settings['collector']['host'] = 'localhost';
+        $settings['collector']['port'] = '9091';
+        parse_collector($options['C']);
+    }
+
+    parse_server_list($options['x']);
+
+    parse_test($options['t']);
+
+}
+
+# MAIN
+
+$memcache = NULL;
+$settings = array();
+init_client_settings($argc, $argv);
+DataService::init();
+if (isset($settings['collector'])) {
+    StatService::init($settings);
+}
+
+$test = $settings['config'];
+StatService::newEvent("Test '" . $test->getName()
+    . "' started on " . php_uname('n'));
+
+$job_id = 1;
+foreach ($test->getJobs() as $job) {
+    if ($settings['job_id'] !== NULL) {
+        /* If jobid is specified only run that job */
+        if ($settings['job_id'] != $job_id) {
+            $job_id++;
+            continue;
+        }
+    }
+    $settings['runtime'] = $job->getMaxTime();
+    $settings['operations'] = $job->getMaxOperations();
+    $settings['forks'] = $job->getForks();
+    $settings['library'] = $job->getLibrary();
+    setup_library($job->getLibrary());
+
+    StatService::newEvent("Job '" . $job->getName() 
+        . "' started on " . php_uname('n') . " using ". $job->getLibrary());
+
+    foreach ($job->getValuesets() as $valueset) {
+        DataService::register($valueset, 'valueset');
+    }
+    foreach ($job->getkeysets() as $keyset) {
+        DataService::register($keyset, 'keyset');
+    }
+    if ($job->getLibrary() == MEMCACHE_LIBMEMCACHE) {
+        if ($options = $job->getOptions()) {
+            foreach ($job->getOptions() as $option) {
+                $memcache->setOption($option->getName(), $option->getValue());
+            }
+        }
+    }
+
+    if (isset($settings['operations'])) {
+        $operation_count = 1;
+    }
+    $start_time = microtime(TRUE);
+    $last = $start_time;
+    $done = FALSE;
+    while ($done == FALSE) {
+        foreach ($job->getOperations() as $operation) {
+            $start_latency = microtime(TRUE);
+            $operation->exec();
+            $end_latency = microtime(TRUE);
+
+            if (isset($settings['collector'])) {
+                $latency = $end_latency - $start_latency;
+                StatService::increment(STAT_LATENCY, $latency);
+                $current = $end_latency; 
+                $time = $current - $last;
+                if ($time >= CLIENT_REPORT_TIME) {
+                    StatService::report();
+                    $last = $current;
+                }
+            }
+            if (isset($settings['operations'])) {
+                if ($operation_count >= $settings['operations']) {
+                    $done = TRUE;
+                    break;
+                }
+                $operation_count++;
+            }
+            if ($settings['runtime']) {
+                $time = microtime(TRUE) - $start_time;
+                if ($time >= $settings['runtime']) {
+                    $done = TRUE;
+                    break;
+                }
+            }
+        }
+    }
+    StatService::newEvent("Job '" . $job->getName() 
+        . "' ended on " . php_uname('n'));
+    if (isset($settings['collector'])) {
+        StatService::report();
+    }
+    $memcache->disconnect();
+    $job_id++;
+}
+
+StatService::newEvent("Test '" . $test->getName()
+    . "' started on " . php_uname('n'));
+
+if (isset($settings['collector'])) {
+    StatService::report();
+}
+
+?>

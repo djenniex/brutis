@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!DOCTYPE brutis SYSTEM "brutis.dtd">
+<brutis>
+    <test name='Set' desc='multi set test' version='1.0'>
+        <jobset name='set' forks='1' operations='100000' library='libmemcache'>
+            <dataset>
+                <key name='set' start='1' end='100000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <value name='generated' mode='generated' size='512'/>
+            </dataset>
+            <operations>
+                <operation type='setMulti' keyset='set' valueset='generated' count='5'/>
+            </operations>
+        </jobset>
+    </test>
+</brutis>

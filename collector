@@ -1,0 +1,630 @@
+#!/usr/bin/php
+<?php
+/*  Author:    $Author: zyounker $
+    Revision:  $Revision: 1.21 $
+    Filename:  $Source: /cvshome/brutis/collector,v $
+    Date:      $Date: 2010-03-19 07:35:24 $
+    Copyright:
+
+    Software License Agreement (BSD License)
+
+    Copyright (c) 2010, Violin Memory, Inc.
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following disclaimer
+      in the documentation and/or other materials provided with the
+      distribution.
+
+    * Neither the name of Violin Memory, Inc. nor the names of its
+      contributors may be used to endorse or promote products derived from
+      this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+    "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+    LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+    A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+    OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+    DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+    THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+*/
+
+/* Set error reporting to all and memory limit to 32M */
+error_reporting(E_ALL);
+ini_set("log_errors", 1);
+ini_set("error_log", "collector-" . php_uname('n') . ".log");
+
+function __autoload($class) {
+    load_class($class);
+}
+
+function load_class($class) {
+    include_once(dirname(__FILE__) . '/lib/' . $class . '.php');
+}
+
+load_class('Common');
+load_class('CollectorStat');
+load_class('BrutisError');
+
+set_error_handler(array('BrutisError','BrutisErrorHandler'));
+
+function init_collector_settings($argc, $argv) {
+    global $settings;
+
+    $options = getopt('hC:vo:F:w:');
+    if (isset($options['h'])
+        || !isset($options['C'])) {
+        echo("\nUsage: collector -C <collector:port> [OPTIONS]\n"
+            . "    -h                        Help\n"
+            . "    -v                        Verbose\n"
+            . "    -C <collector:port,>      collector ip:port \n"
+            . "    -o <output_file>          output file\n"
+            . "    -F <output_file_format>   output file format\n"
+            . "    -w <host:port>            BrutisWeb\n"
+            );
+        echo("\n\n");
+        exit(1);
+    }
+
+    parse_collector($options['C']);
+
+    $settings['brutisweb'] = NULL;
+    if (isset($options['w'])) {
+        $settings['brutisweb'] = (string) trim($options['w']);
+    }
+
+    $settings['filename'] = NULL;
+    if (isset($options['o'])) {
+        $settings['filename'] = (string) trim($options['o']);
+    }
+
+    $settings['format'] = 'csv';
+    if (isset($options['F'])) {
+        $settings['format'] = (string) strtolower(trim($options['F']));
+    }
+
+    $settings['verbose'] = FALSE;
+    if (isset($options['v'])) {
+        $settings['verbose'] = TRUE;
+    }
+}
+
+function start_server($address, $port) {
+    global $settings;
+    global $hosts;
+
+    $sock = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+    socket_set_option($sock, SOL_SOCKET, SO_REUSEADDR, 1);
+    socket_bind($sock, $address, $port); 
+    socket_listen($sock);
+
+    $clients = array($sock);
+    $clients_fp = array();
+
+    onStart();
+    while (true) {
+        $read = $clients;
+        if (@socket_select($read, $write = NULL, $except = NULL, 1) === FALSE) {
+            onShutdown();
+            socket_close($sock);
+            exit(1);
+        }
+        if (in_array($sock, $read)) {
+            /* New connection */
+            $clients[] = $newsock = socket_accept($sock);
+            $key = array_search($sock, $read);
+            onConnect($newsock);
+            unset($read[$key]);
+        } 
+
+        foreach ($read as $read_sock) {
+            $buf_size = 0;
+            $buf = '';
+            $data = '';
+            while ($buf != "\n") {
+                $buf = socket_read($read_sock, 1); 
+                $data .= $buf;
+                if ($buf === '') {
+                    $key = array_search($read_sock, $clients);
+                    unset($clients[$key]);
+                    onClose($read_sock);
+                    break;
+                }
+            }
+            /* get object size and read object into buffer */
+            $buf_size = (int) $data;
+            $data = @socket_read($read_sock, $buf_size); 
+            if ($data != "") {
+                if (!$data = unserialize($data)) {
+                    print ("Error in collector data\n");
+                    $buf = "1\n";
+                    socket_write($read_sock, $buf, strlen($buf));
+                } else {
+                    $buf = "0\n";
+                    socket_write($read_sock, $buf, strlen($buf));
+                    onReceiveData($read_sock, $data);
+                }
+            } 
+        }
+    }       
+    onShutdown();
+    socket_close($sock);
+}    
+
+function clear_screen() {
+    $codes =  array(27, 91, 72, 27, 91, 50, 74);
+    foreach ($codes as $code) {
+        print(chr($code));
+    }
+}
+
+function onStart() {
+/*  onStart()
+    initialize variables, open output file  on startup
+*/
+    global $settings;
+
+    report();
+
+}
+
+function onShutdown() {
+/*  onShutdown()
+    All clients disconnected, cleanup and exit
+*/
+    global $times;
+    global $settings;
+    global $clients;
+
+    $times['end_time'] = microtime(TRUE);
+    $times['test_time'] = $times['end_time'] - $times['start_time'];
+
+    report();
+
+    echo("\n");
+    exit(0);
+}
+
+function OnConnect ($client_id = 0) {
+/*  onConnect() {
+    new client connect
+*/
+    global $clients;
+    global $events;
+    global $settings;
+
+
+    $clients++;
+
+    socket_getpeername($client_id, $address, $port); 
+    $event = "$client_id ($address:$port) connected"; 
+    $events['last_event'] = $event;
+    $events['events'][] = $event;
+
+}
+
+function OnClose($client_id = 0) {
+/*  onClose()
+    Client disconnected
+*/
+    global $clients;
+    global $totals;
+    global $settings;
+    global $events;
+
+    $clients--;
+
+    if (@socket_getpeername($client_id, $address, $port)) {
+        $event = "$client_id ($address:$port) disconnected"; 
+        $events['last_event'] = $event;
+        $events['events'][] = $event;
+    } else {
+        $event = "$client_id terminated connection"; 
+        $events['last_event'] = $event;
+        $events['events'][] = $event;
+    }
+
+    if ($clients == 0) {
+        onShutdown();
+    }
+}
+
+function output_stats() {
+    global $times;
+    global $stats;
+    global $settings;
+    global $events;
+
+    $format = strtolower($settings['format']);
+
+    switch ($format) {
+        case 'json':
+            $header = "#JSON Brutis output\n";
+            $samples = array();
+            $cur_events = array();
+            foreach ($stats as $stat) {
+                $samples[$times['current']][$stat->getName()] = 
+                    $stat->asRTotal();
+            }
+            if (isset($events['events'])) {
+                foreach ($events['events'] as $event) {
+                    $cur_events[$times['current']][] = $event;
+                }
+             }
+            $data =  json_encode($samples) . "\n";
+            $data .=  json_encode($cur_events) . "\n";
+        break;
+        case 'csv':
+            $i = 1;
+            $count = count($stats);
+            $header = "#Brutis CSV output\n";
+            $header .= '#c,timestamp,';
+            $data = 'c,' . $times['current'] . ',';
+            foreach ($stats as $key=>$stat) {
+                if ($i < $count) {
+                    $header .= $key . ',';
+                    $data .= $stat->asRTotal() . ',';
+                } else {
+                    $header .= $key;
+                    $data .= $stat->asRTotal();
+                }
+                $i++;
+            }
+            $data .= "\n";
+            $header .= "\n";
+            $header .= "#e,timestamp,event\n";
+
+            if (isset($events['events'])) {
+                foreach ($events['events'] as $event) {
+                    $data .= "e," . $times['current'] . ',' . $event . "\n";
+                }
+            }
+        break;
+    }
+
+
+    $fp = fopen($settings['filename'], "a+");
+    if (!$settings['output_started']) {
+        fwrite($fp, $header . $data);
+        $settings['output_started'] = TRUE;
+    } else {
+        fwrite($fp, $data);
+    }
+    fclose($fp);
+
+}
+
+function read_events($client_id = 0, $data) {
+    global $events;
+
+    if ($count = count($data) > 0) {
+        foreach ($data as $event) {
+            $events['events'][] = $event;
+        }
+        $events['last_event'] = $event;
+    }
+}
+
+function read_stats($client_id = 0, $counters) {
+    global $stats;
+
+    foreach ($counters as $key=>$value) {
+        $stats[$key]->updateValue((int) $client_id, $value);
+    }
+}
+
+function report() {
+    global $settings;
+    global $stats;
+    global $events;
+
+    if ($settings['verbose']) {
+        print_sample();
+    }
+
+    if ($settings['brutisweb']) {
+        report_to_brutisweb();
+    }
+
+    if ($settings['filename']) {
+        output_stats();
+    }
+
+    foreach ($stats as $stat) {
+        $stat->reset();
+    }
+
+    $events['events'] = NULL;
+}
+
+function onReceiveData ($client_id = 0, $data = '') {
+/*  onReceiveData()
+    New incoming data from client
+*/
+    global $settings;
+    global $times;
+
+    if (isset($data['counters'])) {
+        read_stats($client_id, $data['counters']);
+    }
+    if (isset($data['events'])) {
+        read_events($client_id, $data['events']);
+    }
+
+    $times['current'] = microtime(TRUE);
+    $times['since_start'] = $times['current'] - $times['start_time'];
+    $times['since_last'] = $times['current'] - $times['last'];
+    if ($times['since_last'] >= COLLECTOR_SAMPLE_TIME) {
+        $times['last'] = $times['current'];
+        report();
+    }
+}
+
+function pad($text, $columns = 1, $justify = COLLECTOR_RIGHT) {
+
+
+    $column = $columns * COLLECTOR_COLUMN_SIZE;
+    $len = strlen($text);
+    if ($len <= $column) {
+        for ($i = 1; $i < ($column - $len) ; $i++) {
+            if ($justify == COLLECTOR_RIGHT) {
+                $text = " " . $text;
+            } else {
+                $text = $text . " ";
+            }
+        }
+    }
+    echo ("$text");
+}
+
+function print_sample() {
+    global $settings;
+    global $clients;
+    global $stats;
+    global $times;
+    global $start_time;
+    global $events;
+
+    clear_screen();
+
+    $address = $settings['collector']['host'] . ':'
+        . $settings['collector']['port'];
+
+    pad("Brutis Collector on " . $address . ', ' 
+        . $clients . " connections", 6, COLLECTOR_LEFT);
+    echo("\n");
+    pad("Refresh: " . COLLECTOR_SAMPLE_TIME . " Seconds", 8, COLLECTOR_RIGHT);
+
+    echo ("\n--------------------------------------------------------------------------------\n");
+
+    $total = $stats[STAT_TOTAL_OPS]->asRValue();
+    pad('Sets', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_SET]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_SET]->asFTotal(), 2);
+    #pad("latency " . $stats[STAT_LATENCY]->asFSample($total), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Gets', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_GET]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_GET]->asFTotal(), 2);
+    #pad("latency " . $stats[STAT_LATENCY]->asFSample($total), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Appends', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_APPEND]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_APPEND]->asFTotal(), 2);
+    #pad("latency " . $stats[STAT_LATENCY]->asFSample($total), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Replaces', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_REPLACE]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_REPLACE]->asFTotal(), 2);
+    #pad("latency " . $stats[STAT_LATENCY]->asFSample($total), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Deletes', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_DELETE]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_DELETE]->asFTotal(), 2);
+    #pad("latency " . $stats[STAT_LATENCY]->asFSample($total), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Increments', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_INCREMENT]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_INCREMENT]->asFTotal(), 2);
+    #pad("latency " . $stats[STAT_LATENCY]->asFSample($total), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Decrements', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_DECREMENT]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_DECREMENT]->asFTotal(), 2);
+    #pad("latency " . $stats[STAT_LATENCY]->asFSample($total), 2);
+    pad("---", 2);
+    echo("\n");
+
+    echo ("--------------------------------------------------------------------------------\n");
+    pad('Total', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_TOTAL_OPS]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_TOTAL_OPS]->asFTotal(), 2);
+    $total = $stats[STAT_TOTAL_OPS]->asRTotal();
+    $latency = $stats[STAT_LATENCY]->asFSampleTotal($total); 
+    pad($latency . ' sec', 2);
+    echo("\n\n");
+
+
+    pad('Hits', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_HIT]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_HIT]->asFTotal(), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Misses', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_MISS]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_MISS]->asFTotal(), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Set Fails', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_SET_FAIL]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_SET_FAIL]->asFTotal(), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Append Fails', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_APPEND_FAIL]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_APPEND_FAIL]->asFTotal(), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Replace Fails', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_REPLACE_FAIL]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_REPLACE_FAIL]->asFTotal(), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Delete Fails', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_DELETE_FAIL]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_DELETE_FAIL]->asFTotal(), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Increment Fails', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_INCREMENT_FAIL]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_INCREMENT_FAIL]->asFTotal(), 2);
+    pad("---", 2);
+    echo("\n");
+
+    pad('Decrement Fails', 2, COLLECTOR_LEFT);
+    pad($stats[STAT_DECREMENT_FAIL]->asFSample($times['since_last']) . "/sec", 2);
+    pad($stats[STAT_DECREMENT_FAIL]->asFTotal(), 2);
+    pad("---", 2);
+    echo("\n");
+
+    echo ("--------------------------------------------------------------------------------\n");
+
+    if (strlen("Last event: " . $events['last_event']) > 75) {
+        echo(substr("Last event: " . $events['last_event'], 0, 75) . '...');
+    } else {
+        echo("Last event: " . $events['last_event']);
+    }
+    echo("\n");
+}
+
+function report_to_brutisweb() {
+    global $settings;
+    global $stats;
+    global $times;
+
+echo("NEEDS UPDATE\n");
+exit();
+
+    $data[STAT_TOTAL_OPS] = 
+        $stats[STAT_TOTAL_OPS]->asRSample($times['since_start']);
+    $data[STAT_LATENCY] = 
+        $stats[STAT_LATENCY]->asRSample($data[STAT_TOTAL_OPS]);
+    $data[STAT_SET] = $stats[STAT_SET]->asRSample($time);
+    $data[STAT_SET_FAIL] = $stats[STAT_SET_FAIL]->asRSample($time);
+    $data[STAT_GET] = $stats[STAT_GET]->asRSample($time);
+    $data[STAT_HIT] = $stats[STAT_HIT]->asRSample($time);
+    $data[STAT_MISS] = $stats[STAT_MISS]->asRSample($time);
+    $data[STAT_APPEND] = $stats[STAT_APPEND]->asRSample($time);
+    $data[STAT_APPEND_FAIL] = $stats[STAT_APPEND_FAIL]->asRSample($time);
+    $data[STAT_REPLACE] = $stats[STAT_REPLACE]->asRSample($time);
+    $data[STAT_REPLACE_FAIL] = $stats[STAT_REPLACE_FAIL]->asRSample($time);
+    $data[STAT_DELETE] = $stats[STAT_DELETE]->asRSample($time);
+    $data[STAT_DELETE_FAIL] = $stats[STAT_DELETE_FAIL]->asRSample($time);
+    $data[STAT_INCREMENT] = $stats[STAT_INCREMENT]->asRSample($time);
+    $data[STAT_INCREMENT_FAIL] = $stats[STAT_INCREMENT_FAIL]->asRSample($time);
+    $data[STAT_DECREMENT] = $stats[STAT_INCREMENT]->asRSample($time);
+    $data[STAT_DECREMENT_FAIL] = $stats[STAT_DECREMENT_FAIL]->asRSample($time);
+
+    $dataset['samples'] = $data;
+
+    $params = array(
+        'http' => array(
+            'user_agent' => 'brutis',
+            'method' => 'POST',
+            'content' => serialize($dataset),
+            'header' => "Content-Type: application/x-www-form-urlencoded\n"
+        )
+    );
+
+    $context = stream_context_create($params);
+    $fp = fopen($settings['brutisweb'], 'rb', false, $context);
+
+    if (!$fp) {
+        echo("Error reporting to brutisweb!\n");
+        exit(1);
+    }
+    $response = stream_get_contents($fp);
+    if ($response) {
+        echo ("BrutisWeb: $response\n");
+    }
+
+    fclose($fp);
+}
+
+
+/* MAIN */ 
+
+$clients = 0;
+$times = array();
+$times['start_time'] = microtime(TRUE);
+$times['since_start'] = 0;
+$times['current'] = $times['start_time'];
+$times['last'] = $times['start_time'];
+$times['since_last'] = 0;
+$hosts = array();
+$settings = array();
+$host_info = php_uname('n');
+$events = array();
+$events['last_event'] = 'None';
+$events['events'] = NULL;
+
+init_collector_settings($argc, $argv);
+$settings['output_started'] = FALSE;
+
+
+/* Setup stats */
+$stats = array();
+$stats[STAT_TOTAL_OPS] = new CollectorStat(STAT_TOTAL_OPS);
+$stats[STAT_SET] = new CollectorStat(STAT_SET);
+$stats[STAT_SET_FAIL] = new CollectorStat(STAT_SET_FAIL);
+$stats[STAT_GET] = new CollectorStat(STAT_GET);
+$stats[STAT_HIT] = new CollectorStat(STAT_HIT);
+$stats[STAT_MISS] = new CollectorStat(STAT_MISS);
+$stats[STAT_APPEND] = new CollectorStat(STAT_APPEND);
+$stats[STAT_APPEND_FAIL] = new CollectorStat(STAT_APPEND_FAIL);
+$stats[STAT_DELETE] = new CollectorStat(STAT_DELETE);
+$stats[STAT_DELETE_FAIL] = new CollectorStat(STAT_DELETE_FAIL);
+$stats[STAT_REPLACE] = new CollectorStat(STAT_REPLACE);
+$stats[STAT_REPLACE_FAIL] = new CollectorStat(STAT_REPLACE_FAIL);
+$stats[STAT_INCREMENT] = new CollectorStat(STAT_INCREMENT);
+$stats[STAT_INCREMENT_FAIL] = new CollectorStat(STAT_INCREMENT_FAIL);
+$stats[STAT_DECREMENT] = new CollectorStat(STAT_DECREMENT);
+$stats[STAT_DECREMENT_FAIL] = new CollectorStat(STAT_DECREMENT_FAIL);
+$stats[STAT_LATENCY] = new CollectorStat(STAT_LATENCY);
+$stats[STAT_LATENCY]->setDecimals(6);
+
+
+/* Start collector on requested ip port */
+pcntl_signal(SIGINT, "onShutdown", FALSE);
+start_server($settings['collector']['host'], $settings['collector']['port']);
+?>

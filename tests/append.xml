@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!DOCTYPE brutis SYSTEM "brutis.dtd">
+<brutis>
+    <test name='append' desc='Append test' version='1.0'>
+        <jobset name='append_test' forks='16' time='300' library='libmemcache'>
+            <libmemcache>
+                <option name='Memcached::OPT_COMPRESSION'>FALSE</option>
+            </libmemcache>
+            <dataset>
+                <key name='set' start='1' end='1000000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='append' start='1' end='1000000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='get' start='1' end='1000000' pattern='random' prefix='brutis-' divide='false'/>
+                <value name='static' mode='static' size='18'>brutis static data</value>
+            </dataset>
+            <operations>
+                <operation type='set' keyset='set' valueset='static'/>
+                <operation type='append' keyset='append' valueset='static'/>
+                <operation type='get' keyset='get'/>
+            </operations>
+        </jobset>
+    </test>
+</brutis>

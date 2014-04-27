@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!DOCTYPE brutis SYSTEM "brutis.dtd">
+<brutis>
+    <test name='Set' desc='Divided set test' version='1.0'>
+        <jobset name='set' forks='2' operations='1000000' library='libmemcache'>
+            <libmemcache>
+                <option name='Memcached::OPT_BINARY_PROTOCOL'>FALSE</option>
+            </libmemcache>
+            <dataset>
+                <key name='set' start='1' end='1000000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='set_multi' start='1' end='1000000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='get_multi' start='1' end='1000000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='get' start='1' end='1000000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <value name='generated' mode='generated' size='32'/>
+            </dataset>
+            <operations>
+                <operation type='setMulti' keyset='set_multi' valueset='generated' count='5'/>
+                <operation type='set' keyset='set' valueset='generated'/>
+                <operation type='getMulti' keyset='get_multi' count='5'/>
+                <operation type='get' keyset='get'/>
+            </operations>
+        </jobset>
+    </test>
+</brutis>

@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!DOCTYPE brutis SYSTEM "brutis.dtd">
+<brutis>
+    <test name='Mixed' desc='Mixed operations test' version='1.0'>
+        <jobset name='mix_operations_test' forks='4' time='1200'>
+            <libmemcache>
+                <option name='Memcached::OPT_COMPRESSION'>FALSE</option>
+            </libmemcache>
+            <dataset>
+                <key name='set' start='1' end='1000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='get' start='1' end='1000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='setMulti' start='1' end='1000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='getMulti' start='1' end='1000' pattern='random' prefix='brutis-' divide='true'/>
+                <key name='append' start='1' end='1000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='delete' start='1' end='1000' pattern='random' prefix='brutis-' divide='true'/>
+                <key name='replace' start='1' end='1000' pattern='sequential' prefix='brutis-' divide='true'/>
+                <key name='counter_set' start='1' end='10' pattern='sequential' prefix='brutiscounter-' divide='true'/>
+                <key name='counter_inc' start='1' end='10' pattern='sequential' prefix='brutiscounter-' divide='true'/>
+                <key name='counter_dec' start='1' end='10' pattern='sequential' prefix='brutiscounter-' divide='true'/>
+                <value name='random' mode='generated' size='256'/>
+                <value name='static' mode='static'>asdf1234</value>
+                <value name='counter_static' mode='static' size='1'>0</value>
+            </dataset>
+            <operations>
+                <operation type='set' keyset='set' valueset='static'/>
+                <operation type='setMulti' keyset='setMulti' valueset='static' count='5'/>
+                <operation type='append' keyset='append' valueset='random'/>
+                <operation type='replace' keyset='replace' valueset='random'/>
+                <operation type='get' keyset='get'/>
+                <operation type='getMulti' keyset='getMulti' count='5'/>
+                <operation type='delete' keyset='delete'/>
+                <operation type='set' keyset='counter_set' valueset='counter_static'/>
+                <operation type='increment' keyset='counter_inc'/>
+                <operation type='decrement' keyset='counter_dec'/>
+            </operations>
+        </jobset>
+    </test>
+</brutis>

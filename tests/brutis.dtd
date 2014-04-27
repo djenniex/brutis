@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!ELEMENT brutis (test)>
+<!ELEMENT test (jobset+)>
+<!ELEMENT jobset (libmemcache*, dataset+, operations+)>
+<!ELEMENT libmemcache (option+)>
+<!ELEMENT option (#PCDATA)>
+<!ELEMENT dataset (key+, value*)>
+<!ELEMENT key EMPTY>
+<!ELEMENT value (#PCDATA)>
+<!ELEMENT operations (operation+)>
+<!ELEMENT operation EMPTY>
+
+<!ATTLIST test
+    name CDATA #REQUIRED
+    desc CDATA #REQUIRED
+    version CDATA #REQUIRED>
+
+<!ATTLIST jobset
+    name CDATA #REQUIRED
+    forks CDATA "1" 
+    operations CDATA #IMPLIED
+    time CDATA #IMPLIED
+    library (danga | libmemcache) "libmemcache">
+
+<!ATTLIST option
+    name CDATA #REQUIRED>
+
+<!ATTLIST key
+    name CDATA #REQUIRED
+    start CDATA #REQUIRED
+    end CDATA #REQUIRED
+    pattern (sequential | random) "random"
+    prefix CDATA "brutis-"
+    divide CDATA "false">
+
+<!ATTLIST value
+    name CDATA #REQUIRED
+    mode (generated | static) "generated"
+    size CDATA #IMPLIED>
+
+<!ATTLIST operation
+    type (set | get | setMulti | getMulti | delete | append | replace | increment | decrement | sleep) "sleep"
+    keyset CDATA #IMPLIED
+    valueset CDATA #IMPLIED
+    expire CDATA #IMPLIED
+    count CDATA #IMPLIED>
