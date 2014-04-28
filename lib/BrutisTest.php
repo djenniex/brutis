@@ -734,7 +734,7 @@ class BrutisKeySet {
         if (is_bool($divide)) {
             $this->divide = $divide;
         } else {
-            if (eregi('true', $divide)) {
+            if (preg_match('/true/i', $divide)) {
                 $this->divide = TRUE;
             } else {
                 $this->divide = FALSE;

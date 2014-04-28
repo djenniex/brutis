@@ -58,7 +58,7 @@ class DataService {
     private function __clone() {
     }
 
-    private function genBinaryData($name) {
+    private static function genBinaryData($name) {
         self::$data[$name] = NULL;
         $size = 0;
         $char = 0;
